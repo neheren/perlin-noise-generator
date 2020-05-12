@@ -5,14 +5,14 @@ using UnityEngine;
 public class Perlin : MonoBehaviour
 {
 
-    int size = 64;
-    int gridEach = 16;
+    int size = 512;
+    int gridEach = 64;
 
     Vector2[,] generateGradients (int size) {
         Vector2[,] gradients = new Vector2[size, size];
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
-                gradients[x, y] =  new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized;
+                gradients[x, y] =  new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f));
             }
         }
         return gradients;
@@ -36,9 +36,13 @@ public class Perlin : MonoBehaviour
                 texture.SetPixel(x, y, new Color(currentPixelValue, currentPixelValue, currentPixelValue));  
             }
         }
-        texture.SetPixel(0,0, Color.red);
+        texture.SetPixel(0, 0, Color.blue);
+        texture.SetPixel(2, 0, Color.red);
+        texture.SetPixel(0, 2, Color.green);
         return texture;
     }
+
+    public AnimationCurve gradientSmoothStep;
 
     Vector2[,] gradients;
     void Start() {
@@ -51,12 +55,12 @@ public class Perlin : MonoBehaviour
 
         for (int y = 0; y < size; y++) {
             if(y % gridEach == 0) { 
-                draw2dRay(new Vector2(0, y / (float)size), Vector2.right, Color.black);
+                // draw2dRay(new Vector2(0, y / (float)size), Vector2.right, Color.black);
             }
             for (int x = 0; x < size; x++) {
                 //debugging:
                 if(x % gridEach == 0) { 
-                    draw2dRay(new Vector2(x / (float)size, 0), Vector2.up, Color.black);
+                   // draw2dRay(new Vector2(x / (float)size, 0), Vector2.up, Color.black);
                 }
                 if(x % gridEach == 0 && y % gridEach == 0) {
                     Vector2 nearestGradient = gradients[x / gridEach, y / gridEach];
@@ -88,10 +92,8 @@ public class Perlin : MonoBehaviour
                 Vector2 directionD = PixelPosition - CornerD;
                 
                 
-                // draw2dRay(new Vector2(gX,     gY    ) / size * gridEach, directionA, Color.green);
-                // draw2dRay(new Vector2(gX + 1, gY    ) / size * gridEach, directionB, Color.magenta);
-                // draw2dRay(new Vector2(gX,     gY + 1) / size * gridEach, directionC, Color.cyan);
-                // draw2dRay(new Vector2(gX + 1, gY + 1) / size * gridEach, directionD, Color.yellow);
+                // draw2dRay(PixelPosition, directionA, Color.green);
+                // draw2dRay(PixelPosition, directionC, Color.cyan);
                 
 
                 Vector2[] directionsFromCorners = {
@@ -101,50 +103,55 @@ public class Perlin : MonoBehaviour
                     directionD
                 };
 
-                PixelPosition -= new Vector2(0.5f, 0.5f) / size;
+                // PixelPosition -= new Vector2(0.5f, 0.5f) / size;
                 float[] dotProducts = dotDirectionWithGradient(directionsFromCorners, cornerGradients);
                 float dotSum = 0f;
-                foreach (var dotProduct in dotProducts) {
-                    dotSum += dotProduct;
-                }
 
-                float Iab = (CornerB - PixelPosition).x * gradientSize;
-                // print("x: " + x + ", y: " + y + ", iABx " + Iab);
-                // draw2dLine(PixelPosition, CornerA, Color.blue * Iab);
-                float Icd = (CornerD - PixelPosition).x * gradientSize;
-                // draw2dLine(PixelPosition, CornerD, Color.green * Icd);
-                // print("x: " + x + ", y: " + y + ", iCDx " + Icd);
-                float ix0 = lerp(dotProducts[0], dotProducts[1], Iab);
-                float ix1 = lerp(dotProducts[2], dotProducts[3], Icd);
+                float fractionX = (CornerB - PixelPosition).x * gradientSize;
+                float ix0 = lerp(dotProducts[0], dotProducts[1], 1 - fractionX);
+                float ix1 = lerp(dotProducts[2], dotProducts[3], 1 - fractionX);
 
 
-
-                dotSum = ix0 + ix1;
-
-                float Iac = (CornerC - PixelPosition).y * gradientSize;
-                dotSum = lerp(ix1, ix0, Iac);
+                float fractionY = (CornerC - PixelPosition).y * gradientSize;
+                dotSum = lerp(ix1, ix0, fractionY);
                 // print(Iac);
-                // draw2dLine(PixelPosition, CornerC, Color.blue * Iac);
+                // dotSum = ix1;
 
-                logOnce("iab: " + Iab);
-                logOnce("icd: " + Icd);
-                logOnce("Iac: " + Iac);
+                // draw2dLine(PixelPosition, CornerB, Color.magenta * (1 - fractionX));
+                // draw2dLine(PixelPosition, CornerD, Color.yellow * (1 - fractionX));
 
-                logOnce("ix0: " + ix0);
-                logOnce("ix0: " + ix1);
-                logOnce("dotSum: " + dotSum);
-                
-                once = true;
 
-                floatMap[x, y] = (dotSum + 1f) / 2f;
+                // logOnce("dotProducts[0]: " + dotProducts[0]);
+                // logOnce("dotProducts[1]: " + dotProducts[1]);
+                // logOnce("fractionX: " + fractionX);
+                // logOnce("fractionY: " + fractionY);
+
+                // logOnce("ix0: " + ix0);
+                // logOnce("ix0: " + ix1);
+                // logOnce("dotSum: " + dotSum);
+                // print("fractionX: " + fractionX);
+                // print("fractionY: " + fractionY);
+                if(x > 3)
+                    once = true;
+
+                floatMap[x, y] = (gradientSmoothStep.Evaluate((dotSum + 1f) / 2f));
             }
         }
+        if(this.GetComponent<Renderer>() != null){
+            Texture2D texture = convertFloatToTexture(floatMap);
+            GetComponent<Renderer>().material.mainTexture = texture;
+            GetComponent<Renderer>().material.SetTexture("_BumpMap", texture);
+            texture.filterMode = FilterMode.Point;
+            texture.Apply();
+        }
 
-        Texture2D texture = convertFloatToTexture(floatMap);
-        GetComponent<Renderer>().material.mainTexture = texture;
-        texture.filterMode = FilterMode.Point;
-        texture.Apply();
-        // Mathf.Lerp(, )
+        if(this.GetComponent<Terrain>() != null){
+            print("terrain on object");
+            Terrain terrain = GetComponent<Terrain>();
+            TerrainData terrainData = terrain.terrainData;
+            terrainData.SetHeights(0,0, floatMap);
+        }
+        
     }
     bool once = false;
     void logOnce(string input) {
@@ -157,7 +164,7 @@ public class Perlin : MonoBehaviour
     float[] dotDirectionWithGradient(Vector2[] cornerDirection, Vector2[] cornerGradients) { 
         float[] dots = new float[cornerGradients.Length];
         for (int i = 0; i < cornerDirection.Length; i++){
-            dots[i] = Vector2.Dot(cornerDirection[i].normalized, cornerGradients[i].normalized);
+            dots[i] = Vector2.Dot(cornerDirection[i], cornerGradients[i]);
         }
         
         // draw2dRay(CornerPos, cornerGradients[0].normalized, Color.magenta);
@@ -170,8 +177,15 @@ public class Perlin : MonoBehaviour
 
     float lerp(float a0, float a1, float w) {
         // w = (w + 1f) / 2f;
-        return (1.0f - w) * a0 + w * a1;
+        
+        return (Mathf.Lerp(a0, a1, w));
         return a0 + w * (a1 - a0);
+    }
+
+    float perlinBlendingFunction (float value) {
+        return Mathf.SmoothStep(0, 1, value);
+        return 6 * Mathf.Pow(value, 5) + 15 * Mathf.Pow(value, 4) + 10 * Mathf.Pow(value, 3);
+        // 6t5-15t4+10t3
     }
 
 
