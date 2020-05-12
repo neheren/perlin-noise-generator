@@ -5,8 +5,8 @@ using UnityEngine;
 public class Perlin : MonoBehaviour
 {
 
-    int size = 32;
-    int gridEach = 8;
+    int size = 64;
+    int gridEach = 16;
 
     Vector2[,] generateGradients (int size) {
         Vector2[,] gradients = new Vector2[size, size];
@@ -42,6 +42,8 @@ public class Perlin : MonoBehaviour
 
     Vector2[,] gradients;
     void Start() {
+
+        Application.targetFrameRate = 60;
         int gradientSize = size / gridEach;
         gradients = generateGradients(gradientSize);
 
@@ -59,7 +61,7 @@ public class Perlin : MonoBehaviour
                 if(x % gridEach == 0 && y % gridEach == 0) {
                     Vector2 nearestGradient = gradients[x / gridEach, y / gridEach];
                     draw2dRay(new Vector2(x, y) / size,
-                        nearestGradient / gridEach / 2,
+                        nearestGradient * gradientSize,
                         Color.red
                     );
                 }
@@ -73,29 +75,24 @@ public class Perlin : MonoBehaviour
                     gradients[(gX + 1) % gradientSize, (gY + 1) % gradientSize]
                 };
 
-
-                // draw2dLine(new Vector2(gX, gY) / size * gridEach, new Vector2(x, y) / size, Color.green);
                 Vector2 PixelPosition = new Vector2(x + 0.5f, y + 0.5f) / size;
+                
+                Vector2 CornerA = new Vector2(gX,     gY    ) / size * gridEach;
+                Vector2 CornerB = new Vector2(gX + 1, gY    ) / size * gridEach;
+                Vector2 CornerC = new Vector2(gX,     gY + 1) / size * gridEach;
+                Vector2 CornerD = new Vector2(gX + 1, gY + 1) / size * gridEach;
 
-                Vector2 directionA = PixelPosition - new Vector2(gX,     gY    ) / size * gridEach;
-                Vector2 directionB = PixelPosition - new Vector2(gX + 1, gY    ) / size * gridEach;
-                Vector2 directionC = PixelPosition - new Vector2(gX,     gY + 1) / size * gridEach;
-                Vector2 directionD = PixelPosition - new Vector2(gX + 1, gY + 1) / size * gridEach;
+                Vector2 directionA = PixelPosition - CornerA;
+                Vector2 directionB = PixelPosition - CornerB;
+                Vector2 directionC = PixelPosition - CornerC;
+                Vector2 directionD = PixelPosition - CornerD;
+                
                 
                 // draw2dRay(new Vector2(gX,     gY    ) / size * gridEach, directionA, Color.green);
                 // draw2dRay(new Vector2(gX + 1, gY    ) / size * gridEach, directionB, Color.magenta);
                 // draw2dRay(new Vector2(gX,     gY + 1) / size * gridEach, directionC, Color.cyan);
                 // draw2dRay(new Vector2(gX + 1, gY + 1) / size * gridEach, directionD, Color.yellow);
-
-
-
-
-                // if(x % gridEach == 0 && y % gridEach == 0) {
-                //     draw2dRay(new Vector2(gX,     gY    ) / size * gridEach,
-                //         cornerGradients[0] * gridEach / 2,
-                //         Color.red
-                //     );
-                // }
+                
 
                 Vector2[] directionsFromCorners = {
                     directionA,
@@ -103,13 +100,45 @@ public class Perlin : MonoBehaviour
                     directionC,
                     directionD
                 };
+
+                PixelPosition -= new Vector2(0.5f, 0.5f) / size;
+                float[] dotProducts = dotDirectionWithGradient(directionsFromCorners, cornerGradients);
+                float dotSum = 0f;
+                foreach (var dotProduct in dotProducts) {
+                    dotSum += dotProduct;
+                }
+
+                float Iab = (CornerB - PixelPosition).x * gradientSize;
+                // print("x: " + x + ", y: " + y + ", iABx " + Iab);
+                // draw2dLine(PixelPosition, CornerA, Color.blue * Iab);
+                float Icd = (CornerD - PixelPosition).x * gradientSize;
+                // draw2dLine(PixelPosition, CornerD, Color.green * Icd);
+                // print("x: " + x + ", y: " + y + ", iCDx " + Icd);
+                float ix0 = lerp(dotProducts[0], dotProducts[1], Iab);
+                float ix1 = lerp(dotProducts[2], dotProducts[3], Icd);
+
+
+
+                dotSum = ix0 + ix1;
+
+                float Iac = (CornerC - PixelPosition).y * gradientSize;
+                dotSum = lerp(ix1, ix0, Iac);
+                // print(Iac);
+                // draw2dLine(PixelPosition, CornerC, Color.blue * Iac);
+
+                logOnce("iab: " + Iab);
+                logOnce("icd: " + Icd);
+                logOnce("Iac: " + Iac);
+
+                logOnce("ix0: " + ix0);
+                logOnce("ix0: " + ix1);
+                logOnce("dotSum: " + dotSum);
                 
-                // x & y is flipped...
-                floatMap[x, y] = dotDirectionWithGradient(directionsFromCorners, cornerGradients, PixelPosition, new Vector2(gX, gY) / size * gridEach);
+                once = true;
+
+                floatMap[x, y] = (dotSum + 1f) / 2f;
             }
         }
-        floatMap[0,0] = 0f;
-        // floatMap[size-1,0] = 0f;
 
         Texture2D texture = convertFloatToTexture(floatMap);
         GetComponent<Renderer>().material.mainTexture = texture;
@@ -117,20 +146,34 @@ public class Perlin : MonoBehaviour
         texture.Apply();
         // Mathf.Lerp(, )
     }
-
-
-    float dotDirectionWithGradient(Vector2[] cornerDirection, Vector2[] cornerGradients, Vector2 PixelPosition, Vector2 CornerPos) { 
-        float sum = 0;
-        for (int i = 0; i < cornerDirection.Length; i++){
-            sum += Vector2.Dot(cornerDirection[i].normalized, cornerGradients[i].normalized);
+    bool once = false;
+    void logOnce(string input) {
+        if(!once){
+            print(input);
         }
-        sum /= 4;
+    }
+
+
+    float[] dotDirectionWithGradient(Vector2[] cornerDirection, Vector2[] cornerGradients) { 
+        float[] dots = new float[cornerGradients.Length];
+        for (int i = 0; i < cornerDirection.Length; i++){
+            dots[i] = Vector2.Dot(cornerDirection[i].normalized, cornerGradients[i].normalized);
+        }
+        
         // draw2dRay(CornerPos, cornerGradients[0].normalized, Color.magenta);
         // draw2dRay(PixelPosition, cornerDirection[0].normalized, Color.blue);
         // draw2dLine(cornerGradients[0], cornerDirection[0].normalized, Color.green);
         // return (Vector2.Dot(cornerDirection[0].normalized, cornerGradients[0].normalized) + 1) / 2;
-        return (sum + 1) / 2;
+        return dots;
     }
+
+
+    float lerp(float a0, float a1, float w) {
+        // w = (w + 1f) / 2f;
+        return (1.0f - w) * a0 + w * a1;
+        return a0 + w * (a1 - a0);
+    }
+
 
     Color defColor = Color.red;
     void draw2dRay (Vector2 start, Vector2 dir, Color col) {
